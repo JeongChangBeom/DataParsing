@@ -10,8 +10,8 @@ public static class EditorCoroutineRunner
     private class Routine
     {
         public IEnumerator enumerator;
-        public object waiting;          // 현재 대기 대상 (null이면 1프레임 대기)
-        public int waitFrame;           // null yield 처리용
+        public object waiting;
+        public int waitFrame;
     }
 
     private static readonly List<Routine> _routines = new();
@@ -48,10 +48,8 @@ public static class EditorCoroutineRunner
                 continue;
             }
 
-            // 대기 처리
             if (r.waiting != null)
             {
-                // UnityWebRequestAsyncOperation 대기
                 UnityWebRequestAsyncOperation webOp = r.waiting as UnityWebRequestAsyncOperation;
                 if (webOp != null)
                 {
@@ -64,7 +62,6 @@ public static class EditorCoroutineRunner
                 }
                 else
                 {
-                    // 기타 AsyncOperation 대기
                     AsyncOperation op = r.waiting as AsyncOperation;
                     if (op != null)
                     {
@@ -77,14 +74,12 @@ public static class EditorCoroutineRunner
                     }
                     else
                     {
-                        // 알 수 없는 yield object는 "그냥 다음 프레임에 진행" 처리
                         r.waiting = null;
                     }
                 }
             }
             else
             {
-                // yield return null 처리: 1프레임 대기
                 if (r.waitFrame > 0)
                 {
                     r.waitFrame = 0;
@@ -92,7 +87,6 @@ public static class EditorCoroutineRunner
                 }
             }
 
-            // 한 스텝 진행
             bool alive = r.enumerator.MoveNext();
             if (!alive)
             {
@@ -100,7 +94,6 @@ public static class EditorCoroutineRunner
                 continue;
             }
 
-            // 다음 대기 대상 등록
             object yielded = r.enumerator.Current;
 
             if (yielded == null)

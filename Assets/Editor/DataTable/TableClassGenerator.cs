@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using UnityEditor;
 
-public static class DataTableCodeGenerator
+public static class TableClassGenerator
 {
     public class ColumnInfo
     {
@@ -91,6 +91,7 @@ public static class DataTableCodeGenerator
 
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using System.Globalization;");
         sb.AppendLine("using UnityEngine;");
         sb.AppendLine();
         sb.AppendLine("// AUTO-GENERATED. DO NOT EDIT.");
@@ -168,6 +169,8 @@ public static class DataTableCodeGenerator
         sb.AppendLine("            return;");
         sb.AppendLine("        }");
         sb.AppendLine();
+        sb.AppendLine("        HashSet<int> usedRowKeys = new HashSet<int>();");
+        sb.AppendLine();
         sb.AppendLine("        for (int r = 3; r < table.RowCount; r++)");
         sb.AppendLine("        {");
         sb.AppendLine("            string rowKeyText = table.GetCell(r, 0).Trim();");
@@ -179,6 +182,13 @@ public static class DataTableCodeGenerator
         sb.AppendLine("            int rowKey;");
         sb.AppendLine("            if (!int.TryParse(rowKeyText, out rowKey))");
         sb.AppendLine("            {");
+        sb.AppendLine("                Debug.LogWarning(\"[Table] rowKey ÆÄ½Ì ½ÇÆÐ: row=\" + (r + 1) + \", value=\" + rowKeyText);");
+        sb.AppendLine("                continue;");
+        sb.AppendLine("            }");
+        sb.AppendLine();
+        sb.AppendLine("            if (!usedRowKeys.Add(rowKey))");
+        sb.AppendLine("            {");
+        sb.AppendLine("                Debug.LogWarning(\"[Table] Áßº¹ rowKey ½ºÅµ: key=\" + rowKey + \", row=\" + (r + 1));");
         sb.AppendLine("                continue;");
         sb.AppendLine("            }");
         sb.AppendLine();
@@ -210,6 +220,7 @@ public static class DataTableCodeGenerator
         AssetDatabase.ImportAsset(scriptPath);
     }
 
+
     private static void AppendParseAssign(StringBuilder sb, string dataVar, ColumnInfo col)
     {
         string field = dataVar + "." + col.fieldName;
@@ -231,7 +242,7 @@ public static class DataTableCodeGenerator
             sb.AppendLine("                float v = 0f;");
             sb.AppendLine("                if (!string.IsNullOrEmpty(raw))");
             sb.AppendLine("                {");
-            sb.AppendLine("                    if (!float.TryParse(raw, out v))");
+            sb.AppendLine("                    if (!float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out v))");
             sb.AppendLine("                    {");
             sb.AppendLine("                        v = 0f;");
             sb.AppendLine("                    }");
@@ -264,6 +275,7 @@ public static class DataTableCodeGenerator
             sb.AppendLine("                " + field + " = v;");
         }
     }
+
 
     private static bool TryParseType(string typeText, out EDataTableColumnType type)
     {

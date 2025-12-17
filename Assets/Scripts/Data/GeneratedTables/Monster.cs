@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 // AUTO-GENERATED. DO NOT EDIT.
@@ -72,6 +73,8 @@ public class Monster : ScriptableObject
             return;
         }
 
+        HashSet<int> usedRowKeys = new HashSet<int>();
+
         for (int r = 3; r < table.RowCount; r++)
         {
             string rowKeyText = table.GetCell(r, 0).Trim();
@@ -83,6 +86,13 @@ public class Monster : ScriptableObject
             int rowKey;
             if (!int.TryParse(rowKeyText, out rowKey))
             {
+                Debug.LogWarning("[Table] rowKey 파싱 실패: row=" + (r + 1) + ", value=" + rowKeyText);
+                continue;
+            }
+
+            if (!usedRowKeys.Add(rowKey))
+            {
+                Debug.LogWarning("[Table] 중복 rowKey 스킵: key=" + rowKey + ", row=" + (r + 1));
                 continue;
             }
 

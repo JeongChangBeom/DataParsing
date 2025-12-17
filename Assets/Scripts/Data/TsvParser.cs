@@ -12,9 +12,9 @@ public class TsvParser
         string normalized = tsv.Replace("\r\n", "\n").Replace("\r", "\n");
         string[] lines = normalized.Split('\n');
 
-        for(int i = 0; i < lines.Length; i++)
+        for (int i = 0; i < lines.Length; i++)
         {
-            if (string.IsNullOrEmpty(lines[i]))
+            if (string.IsNullOrWhiteSpace(lines[i]))
             {
                 continue;
             }
@@ -24,4 +24,5 @@ public class TsvParser
 
         return table;
     }
+
 }

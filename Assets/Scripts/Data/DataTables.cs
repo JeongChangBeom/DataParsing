@@ -1,4 +1,7 @@
-﻿public class DataTables
+﻿using UnityEngine;
+
+// AUTO-GENERATED. DO NOT EDIT.
+public class DataTables
 {
     public Item Item { get; private set; }
     public Quest Quest { get; private set; }

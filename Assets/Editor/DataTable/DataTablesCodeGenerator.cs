@@ -4,13 +4,13 @@ using System.IO;
 using System.Text;
 using UnityEditor;
 
-public static class DataTablesCodeGen
+public static class DataTablesCodeGenerator
 {
     public class TableInfo
     {
         public string tabName;
         public string className;
-        public string resourcesPath; // GeneratedTables/<tabNameSafe>
+        public string resourcesPath;
     }
 
     public static void WriteDataTablesScript(string scriptPath, List<TableInfo> tables)

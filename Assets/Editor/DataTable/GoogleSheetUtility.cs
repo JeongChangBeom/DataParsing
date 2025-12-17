@@ -20,8 +20,8 @@ public static class GoogleSheetUtility
     [Serializable]
     public class SheetProperties
     {
-        public int sheetId;   // gid
-        public string title;  // ≈« ¿Ã∏ß
+        public int sheetId;
+        public string title;
     }
 
     public static bool TryExtractSpreadsheetId(string sheetUrl, out string spreadsheetId)

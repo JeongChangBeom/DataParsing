@@ -20,7 +20,6 @@ public static class DataTableAssetBuilder
         string joined = string.Join("\n", payloadLines);
         EditorPrefs.SetString(PendingKey, joined);
 
-        // 한 번만 예약
         if (!_scheduled)
         {
             _scheduled = true;
@@ -30,7 +29,6 @@ public static class DataTableAssetBuilder
 
     private static void TryCreatePendingAssets()
     {
-        // 아직 컴파일 중이면 → 다음 프레임에 한 번만 다시 시도
         if (EditorApplication.isCompiling || EditorApplication.isUpdating)
         {
             EditorApplication.delayCall += TryCreatePendingAssets;
@@ -92,22 +90,30 @@ public static class DataTableAssetBuilder
 
     private static Type FindScriptableObjectTypeByName(string className)
     {
-        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            Type[] types;
-            try { types = asm.GetTypes(); }
-            catch { continue; }
+        var types = TypeCache.GetTypesDerivedFrom<ScriptableObject>();
 
-            foreach (var t in types)
+        Type found = null;
+
+        for (int i = 0; i < types.Count; i++)
+        {
+            Type t = types[i];
+
+            if (t.Name != className)
             {
-                if (t.Name == className &&
-                    typeof(ScriptableObject).IsAssignableFrom(t))
-                {
-                    return t;
-                }
+                continue;
             }
+
+            if (found != null)
+            {
+                Debug.LogError("[DataTableAssetBuilder] 동일 이름 ScriptableObject 타입이 여러 개입니다: " + className);
+                return null;
+            }
+
+            found = t;
         }
-        return null;
+
+        return found;
     }
+
 }
 #endif

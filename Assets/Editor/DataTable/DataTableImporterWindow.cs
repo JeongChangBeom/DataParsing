@@ -117,6 +117,11 @@ public class DataTableImporterWindow : EditorWindow
                 RefreshSelected();
             }
 
+            if (GUILayout.Button("선택 시트 삭제"))
+            {
+                DeleteSelected();
+            }
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -132,7 +137,7 @@ public class DataTableImporterWindow : EditorWindow
 
         if (_tabs.Count == 0)
         {
-            EditorGUILayout.HelpBox("시트이 없습니다. A 버튼으로 불러오세요.", MessageType.None);
+            EditorGUILayout.HelpBox("시트가 없습니다.", MessageType.None);
             return;
         }
 
@@ -270,8 +275,8 @@ public class DataTableImporterWindow : EditorWindow
                 continue;
             }
 
-            string className = DataTableCodeGenerator.ToSafeClassName(p.title);
-            string safeTabFile = DataTableCodeGenerator.ToSafeAssetFileName(p.title);
+            string className = TableClassGenerator.ToSafeClassName(p.title);
+            string safeTabFile = TableClassGenerator.ToSafeAssetFileName(p.title);
 
             SheetTabInfo item = new SheetTabInfo();
             item.title = p.title;
@@ -336,7 +341,7 @@ public class DataTableImporterWindow : EditorWindow
 
     private IEnumerator CreateCoroutine(List<SheetTabInfo> targets)
     {
-        List<DataTablesCodeGen.TableInfo> tableInfos = new List<DataTablesCodeGen.TableInfo>();
+        List<DataTablesCodeGenerator.TableInfo> tableInfos = new List<DataTablesCodeGenerator.TableInfo>();
         List<string> pending = new List<string>();
 
         for (int i = 0; i < targets.Count; i++)
@@ -359,9 +364,9 @@ public class DataTableImporterWindow : EditorWindow
 
             string tsv = req.downloadHandler.text;
 
-            List<DataTableCodeGenerator.ColumnInfo> cols;
+            List<TableClassGenerator.ColumnInfo> cols;
             string err;
-            if (!DataTableCodeGenerator.TryExtractColumnsFromTsv(tsv, out cols, out err))
+            if (!TableClassGenerator.TryExtractColumnsFromTsv(tsv, out cols, out err))
             {
                 Debug.LogError("[StrongTypedTable] 컬럼 추출 실패: " + tab.title + " / " + err);
                 continue;
@@ -369,14 +374,13 @@ public class DataTableImporterWindow : EditorWindow
 
             if (File.Exists(tab.scriptPath) && !_overwriteScript)
             {
-                // keep
             }
             else
             {
-                DataTableCodeGenerator.WriteTableScript(tab.scriptPath, tab.className, cols);
+                TableClassGenerator.WriteTableScript(tab.scriptPath, tab.className, cols);
             }
 
-            DataTablesCodeGen.TableInfo info = new DataTablesCodeGen.TableInfo();
+            DataTablesCodeGenerator.TableInfo info = new DataTablesCodeGenerator.TableInfo();
             info.tabName = tab.title;
             info.className = tab.className;
             info.resourcesPath = tab.resourcesPath;
@@ -388,7 +392,7 @@ public class DataTableImporterWindow : EditorWindow
 
         EditorUtility.ClearProgressBar();
 
-        DataTablesCodeGen.WriteDataTablesScript(_generatedDataTablesScriptPath, tableInfos);
+        DataTablesCodeGenerator.WriteDataTablesScript(_generatedDataTablesScriptPath, tableInfos);
 
         if (pending.Count > 0)
         {
@@ -442,7 +446,7 @@ public class DataTableImporterWindow : EditorWindow
             SheetTabInfo tab = targets[i];
 
             EditorUtility.DisplayProgressBar(
-                "StrongTyped Importer",
+                "DataTable Importer",
                 "Refreshing: " + tab.title + " (" + (i + 1) + "/" + targets.Count + ")",
                 (float)(i + 1) / targets.Count);
 
@@ -451,7 +455,7 @@ public class DataTableImporterWindow : EditorWindow
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError("[StrongTypedTable] TSV 다운로드 실패: " + tab.title + " / " + req.error);
+                Debug.LogError("[DataTableImporter] TSV 다운로드 실패: " + tab.title + " / " + req.error);
                 continue;
             }
 
@@ -460,14 +464,67 @@ public class DataTableImporterWindow : EditorWindow
             UnityEngine.Object asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(tab.assetPath);
             if (asset == null)
             {
-                Debug.LogWarning("[StrongTypedTable] asset 없음(스킵): " + tab.assetPath);
+                Debug.LogWarning("[DataTableImporter] asset 없음(스킵): " + tab.assetPath);
+                continue;
+            }
+
+            List<TableClassGenerator.ColumnInfo> columns;
+            string schemaError;
+
+            if (!TableClassGenerator.TryExtractColumnsFromTsv(tsv, out columns, out schemaError))
+            {
+                Debug.LogError("[DataTableImporter] 컬럼 추출 실패: " + tab.title + " / " + schemaError);
+                continue;
+            }
+
+            Type dataType = asset.GetType().GetNestedType(
+                "Data",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+
+            if (dataType == null)
+            {
+                Debug.LogError("[DataTableImporter] Data 타입 없음: " + asset.GetType().FullName);
+                continue;
+            }
+
+            var fields = dataType.GetFields(
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.Instance);
+
+            HashSet<string> fieldSet = new HashSet<string>();
+            for (int f = 0; f < fields.Length; f++)
+            {
+                fieldSet.Add(fields[f].Name);
+            }
+
+            fieldSet.Remove("RowKey");
+
+            bool schemaMismatch = columns.Count != fieldSet.Count;
+
+            if (!schemaMismatch)
+            {
+                for (int c = 0; c < columns.Count; c++)
+                {
+                    if (!fieldSet.Contains(columns[c].fieldName))
+                    {
+                        schemaMismatch = true;
+                        break;
+                    }
+                }
+            }
+
+            if (schemaMismatch)
+            {
+                Debug.LogWarning(
+                    "[DataTableImporter] 스키마 변경 감지됨: " + tab.title +
+                    "\n→ 열 추가/삭제/이름 변경이 있으면 '선택 시트 생성'을 다시 실행하세요.");
                 continue;
             }
 
             var method = asset.GetType().GetMethod("ParseFromTsv");
             if (method == null)
             {
-                Debug.LogError("[StrongTypedTable] ParseFromTsv 메서드 없음: " + asset.GetType().FullName);
+                Debug.LogError("[DataTableImporter] ParseFromTsv 메서드 없음: " + asset.GetType().FullName);
                 continue;
             }
 
@@ -489,6 +546,129 @@ public class DataTableImporterWindow : EditorWindow
         _status = "갱신 완료.";
         SavePrefs();
         Repaint();
+    }
+
+    private void DeleteSelected()
+    {
+        List<SheetTabInfo> targets = GetSelected();
+        if (targets.Count == 0)
+        {
+            _status = "선택된 시트가 없습니다.";
+            SavePrefs();
+            return;
+        }
+
+        string msg = BuildDeleteConfirmMessage(targets);
+
+        bool ok = EditorUtility.DisplayDialog(
+            "삭제 확인",
+            msg,
+            "삭제",
+            "취소");
+
+        if (!ok)
+        {
+            _status = "삭제 취소.";
+            SavePrefs();
+            Repaint();
+            return;
+        }
+
+        _isBusy = true;
+        _status = "삭제 중...";
+        SavePrefs();
+
+        PerformDelete(targets);
+    }
+
+    private string BuildDeleteConfirmMessage(List<SheetTabInfo> targets)
+    {
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        sb.AppendLine("선택한 테이블을 삭제합니다.");
+        sb.AppendLine("삭제 대상(.asset / .cs):");
+        sb.AppendLine();
+
+        int show = Mathf.Min(10, targets.Count);
+        for (int i = 0; i < show; i++)
+        {
+            sb.AppendLine("- " + targets[i].title);
+        }
+
+        if (targets.Count > show)
+        {
+            sb.AppendLine("... (+" + (targets.Count - show) + ")");
+        }
+
+        return sb.ToString();
+    }
+
+    private void PerformDelete(List<SheetTabInfo> targets)
+    {
+        HashSet<int> deleteGids = new HashSet<int>();
+
+        for (int i = 0; i < targets.Count; i++)
+        {
+            SheetTabInfo tab = targets[i];
+
+            deleteGids.Add(tab.gid);
+
+            if (!string.IsNullOrEmpty(tab.assetPath))
+            {
+                AssetDatabase.DeleteAsset(tab.assetPath);
+            }
+
+            if (!string.IsNullOrEmpty(tab.scriptPath))
+            {
+                AssetDatabase.DeleteAsset(tab.scriptPath);
+            }
+        }
+
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        for (int i = _tabs.Count - 1; i >= 0; i--)
+        {
+            if (deleteGids.Contains(_tabs[i].gid))
+            {
+                _tabs.RemoveAt(i);
+            }
+        }
+
+        RegenerateDataTablesScript();
+
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        _isBusy = false;
+        _status = "삭제 완료.";
+        SavePrefs();
+        Repaint();
+    }
+
+
+    private void RegenerateDataTablesScript()
+    {
+        List<DataTablesCodeGenerator.TableInfo> tableInfos = new List<DataTablesCodeGenerator.TableInfo>();
+
+        for (int i = 0; i < _tabs.Count; i++)
+        {
+            SheetTabInfo tab = _tabs[i];
+
+            if (!tab.assetExists)
+            {
+                continue;
+            }
+
+            DataTablesCodeGenerator.TableInfo info = new DataTablesCodeGenerator.TableInfo();
+            info.tabName = tab.title;
+            info.className = tab.className;
+            info.resourcesPath = tab.resourcesPath;
+
+            tableInfos.Add(info);
+        }
+
+        EnsureFolder(Path.GetDirectoryName(_generatedDataTablesScriptPath));
+        DataTablesCodeGenerator.WriteDataTablesScript(_generatedDataTablesScriptPath, tableInfos);
     }
 
     private List<SheetTabInfo> GetSelected()
@@ -601,7 +781,6 @@ public class DataTableImporterWindow : EditorWindow
             }
             catch
             {
-                // ignore
             }
         }
     }
