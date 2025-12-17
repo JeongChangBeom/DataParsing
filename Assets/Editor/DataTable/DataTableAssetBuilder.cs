@@ -5,12 +5,12 @@ using UnityEditor;
 using UnityEngine;
 
 [InitializeOnLoad]
-public static class StrongTypedTablePostProcessor
+public static class DataTableAssetBuilder
 {
     private const string PendingKey = "StrongTypedTable_PendingCreate_NoNS";
     private static bool _scheduled;
 
-    static StrongTypedTablePostProcessor()
+    static DataTableAssetBuilder()
     {
         EditorApplication.delayCall += TryCreatePendingAssets;
     }

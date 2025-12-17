@@ -7,10 +7,10 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
 
-public class StrongTypedDataTableImporterWindow : EditorWindow
+public class DataTableImporterWindow : EditorWindow
 {
     [Serializable]
-    private class TabItem
+    private class SheetTabInfo
     {
         public bool selected;
         public string title;
@@ -28,7 +28,7 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
     [Serializable]
     private class TabListWrapper
     {
-        public List<TabItem> tabs = new List<TabItem>();
+        public List<SheetTabInfo> tabs = new List<SheetTabInfo>();
     }
 
     private const string PrefPrefix = "StrongTypedImporter_";
@@ -47,12 +47,12 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
     private bool _isBusy;
     private string _status = "";
 
-    private List<TabItem> _tabs = new List<TabItem>();
+    private List<SheetTabInfo> _tabs = new List<SheetTabInfo>();
 
     [MenuItem("Tools/DataTable/StrongTyped Importer")]
     public static void Open()
     {
-        GetWindow<StrongTypedDataTableImporterWindow>("StrongTyped Importer");
+        GetWindow<DataTableImporterWindow>("StrongTyped Importer");
     }
 
     private void OnEnable()
@@ -140,7 +140,7 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
 
         for (int i = 0; i < _tabs.Count; i++)
         {
-            TabItem t = _tabs[i];
+            SheetTabInfo t = _tabs[i];
 
             EditorGUILayout.BeginVertical("box");
             EditorGUILayout.BeginHorizontal();
@@ -242,7 +242,7 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
         Dictionary<string, bool> selectedMap = new Dictionary<string, bool>();
         for (int i = 0; i < _tabs.Count; i++)
         {
-            TabItem old = _tabs[i];
+            SheetTabInfo old = _tabs[i];
             if (old != null && !string.IsNullOrEmpty(old.title))
             {
                 selectedMap[old.title] = old.selected;
@@ -270,10 +270,10 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
                 continue;
             }
 
-            string className = StrongTypedTableCodeGen.ToSafeClassName(p.title);
-            string safeTabFile = StrongTypedTableCodeGen.ToSafeAssetFileName(p.title);
+            string className = DataTableCodeGenerator.ToSafeClassName(p.title);
+            string safeTabFile = DataTableCodeGenerator.ToSafeAssetFileName(p.title);
 
-            TabItem item = new TabItem();
+            SheetTabInfo item = new SheetTabInfo();
             item.title = p.title;
             item.gid = p.sheetId;
 
@@ -305,7 +305,7 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
 
     private void CreateSelected()
     {
-        List<TabItem> targets = GetSelected();
+        List<SheetTabInfo> targets = GetSelected();
         if (targets.Count == 0)
         {
             _status = "선택된 시트가 없습니다.";
@@ -334,14 +334,14 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
         EditorCoroutineRunner.Start(CreateCoroutine(targets));
     }
 
-    private IEnumerator CreateCoroutine(List<TabItem> targets)
+    private IEnumerator CreateCoroutine(List<SheetTabInfo> targets)
     {
         List<DataTablesCodeGen.TableInfo> tableInfos = new List<DataTablesCodeGen.TableInfo>();
         List<string> pending = new List<string>();
 
         for (int i = 0; i < targets.Count; i++)
         {
-            TabItem tab = targets[i];
+            SheetTabInfo tab = targets[i];
 
             EditorUtility.DisplayProgressBar(
                 "StrongTyped Importer",
@@ -359,9 +359,9 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
 
             string tsv = req.downloadHandler.text;
 
-            List<StrongTypedTableCodeGen.ColumnInfo> cols;
+            List<DataTableCodeGenerator.ColumnInfo> cols;
             string err;
-            if (!StrongTypedTableCodeGen.TryExtractColumnsFromTsv(tsv, out cols, out err))
+            if (!DataTableCodeGenerator.TryExtractColumnsFromTsv(tsv, out cols, out err))
             {
                 Debug.LogError("[StrongTypedTable] 컬럼 추출 실패: " + tab.title + " / " + err);
                 continue;
@@ -373,7 +373,7 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
             }
             else
             {
-                StrongTypedTableCodeGen.WriteTableScript(tab.scriptPath, tab.className, cols);
+                DataTableCodeGenerator.WriteTableScript(tab.scriptPath, tab.className, cols);
             }
 
             DataTablesCodeGen.TableInfo info = new DataTablesCodeGen.TableInfo();
@@ -392,7 +392,7 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
 
         if (pending.Count > 0)
         {
-            StrongTypedTablePostProcessor.SetPending(pending);
+            DataTableAssetBuilder.SetPending(pending);
         }
 
         AssetDatabase.Refresh();
@@ -410,7 +410,7 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
 
     private void RefreshSelected()
     {
-        List<TabItem> targets = GetSelected();
+        List<SheetTabInfo> targets = GetSelected();
         if (targets.Count == 0)
         {
             _status = "선택된 시트가 없습니다.";
@@ -435,11 +435,11 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
         EditorCoroutineRunner.Start(RefreshCoroutine(targets));
     }
 
-    private IEnumerator RefreshCoroutine(List<TabItem> targets)
+    private IEnumerator RefreshCoroutine(List<SheetTabInfo> targets)
     {
         for (int i = 0; i < targets.Count; i++)
         {
-            TabItem tab = targets[i];
+            SheetTabInfo tab = targets[i];
 
             EditorUtility.DisplayProgressBar(
                 "StrongTyped Importer",
@@ -491,9 +491,9 @@ public class StrongTypedDataTableImporterWindow : EditorWindow
         Repaint();
     }
 
-    private List<TabItem> GetSelected()
+    private List<SheetTabInfo> GetSelected()
     {
-        List<TabItem> list = new List<TabItem>();
+        List<SheetTabInfo> list = new List<SheetTabInfo>();
         for (int i = 0; i < _tabs.Count; i++)
         {
             if (_tabs[i].selected)

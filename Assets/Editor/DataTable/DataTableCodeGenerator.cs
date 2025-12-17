@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using UnityEditor;
 
-public static class StrongTypedTableCodeGen
+public static class DataTableCodeGenerator
 {
     public class ColumnInfo
     {
