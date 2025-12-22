@@ -31,7 +31,7 @@ public class DataTableImporterWindow : EditorWindow
         public List<SheetTabInfo> tabs = new List<SheetTabInfo>();
     }
 
-    private const string PrefPrefix = "StrongTypedImporter_";
+    private const string PrefPrefix = "DataTableImporter_";
 
     private string _sheetUrl = "";
     private string _apiKey = "";
@@ -49,10 +49,10 @@ public class DataTableImporterWindow : EditorWindow
 
     private List<SheetTabInfo> _tabs = new List<SheetTabInfo>();
 
-    [MenuItem("Tools/DataTable/StrongTyped Importer")]
+    [MenuItem("Tools/DataTable/DataTable Importer")]
     public static void Open()
     {
-        GetWindow<DataTableImporterWindow>("StrongTyped Importer");
+        GetWindow<DataTableImporterWindow>("DataTable Importer");
     }
 
     private void OnEnable()
@@ -349,7 +349,7 @@ public class DataTableImporterWindow : EditorWindow
             SheetTabInfo tab = targets[i];
 
             EditorUtility.DisplayProgressBar(
-                "StrongTyped Importer",
+                "DataTable Importer",
                 "Downloading TSV: " + tab.title + " (" + (i + 1) + "/" + targets.Count + ")",
                 (float)(i + 1) / targets.Count);
 
@@ -358,7 +358,7 @@ public class DataTableImporterWindow : EditorWindow
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError("[StrongTypedTable] TSV 다운로드 실패: " + tab.title + " / " + req.error);
+                Debug.LogError("[DataTableImporter] TSV 다운로드 실패: " + tab.title + " / " + req.error);
                 continue;
             }
 
@@ -368,7 +368,7 @@ public class DataTableImporterWindow : EditorWindow
             string err;
             if (!TableClassGenerator.TryExtractColumnsFromTsv(tsv, out cols, out err))
             {
-                Debug.LogError("[StrongTypedTable] 컬럼 추출 실패: " + tab.title + " / " + err);
+                Debug.LogError("[DataTableImporter] 컬럼 추출 실패: " + tab.title + " / " + err);
                 continue;
             }
 
@@ -644,7 +644,6 @@ public class DataTableImporterWindow : EditorWindow
         SavePrefs();
         Repaint();
     }
-
 
     private void RegenerateDataTablesScript()
     {
