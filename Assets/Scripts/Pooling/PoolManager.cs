@@ -1,10 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public sealed class PoolManager : MonoBehaviour
+public sealed class PoolManager : MonoSingleton<PoolManager>
 {
-    public static PoolManager Instance { get; private set; }
-
     [Header("Option")]
     [SerializeField] private PoolSettings _settings;
 
@@ -13,17 +11,8 @@ public sealed class PoolManager : MonoBehaviour
 
     private Transform _poolRoot;
 
-    private void Awake()
+    protected override void OnInitialize()
     {
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
-        Instance = this;
-        DontDestroyOnLoad(gameObject);
-
         _poolRoot = new GameObject("[PoolRoot]").transform;
         _poolRoot.SetParent(transform, false);
 
