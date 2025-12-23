@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Tools/Pooling/PoolSettings", fileName = "PoolSettings")]
+[CreateAssetMenu(menuName = "Framework/Pooling/PoolSettings", fileName = "PoolSettings")]
 public class PoolSettings : ScriptableObject
 {
     public List<Entry> entries = new();
@@ -14,12 +14,12 @@ public class PoolSettings : ScriptableObject
 
         [Min(0)] public int prewarmCount = 10;
 
-        [Tooltip("0ÀÌ¸é ¹«Á¦ÇÑ")]
+        [Tooltip("0ì´ë©´ ë¬´ì œí•œ")]
         [Min(0)] public int maxCount = 0;
 
         public bool autoExpand = true;
 
-        [Tooltip("½ºÆù ½Ã Ç® ¿ÀºêÁ§Æ®¸¦ ³ÖÀ» ±âº» ºÎ¸ğ(ºñ¿öµÎ¸é PoolManager ¾Æ·¡·Î Á¤¸®µÊ)")]
+        [Tooltip("ìŠ¤í° ì‹œ í’€ ì˜¤ë¸Œì íŠ¸ë¥¼ ë„£ì„ ê¸°ë³¸ ë¶€ëª¨(ë¹„ì›Œë‘ë©´ PoolManager ì•„ë˜ë¡œ ì •ë¦¬ë¨)")]
         public Transform defaultParent;
     }
 }
