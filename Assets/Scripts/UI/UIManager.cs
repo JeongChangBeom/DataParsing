@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,16 +9,24 @@ public class UIManager : MonoSingleton<UIManager>
     [SerializeField] private Canvas _uiRootCanvas;
     [SerializeField] private RectTransform _popupRoot;
 
+    [Header("Modal")]
+    [SerializeField] private GameObject _modalBlocker;
+
     private readonly List<PopupRequest> _pending = new();
-    private readonly Stack<UIPopupBase> _stack = new();
+    private readonly Dictionary<Type, Stack<UIPopupBase>> _pool = new();
+
+    private UIPopupBase _current;
 
     private int _sequenceCounter;
     private bool _processScheduled;
 
     protected override void OnInitialize()
     {
+        DontDestroyOnLoad(gameObject);
+
         EnsureCanvasRoot();
         EnsurePopupRoot();
+        EnsureModalBlocker();
     }
 
     private void LateUpdate()
@@ -31,33 +40,59 @@ public class UIManager : MonoSingleton<UIManager>
         ProcessPending();
     }
 
-    public void RequestPopup(UIPopupBase popupPrefab, EPopupPriority priority, object payload = null, bool unique = true)
+    public void RequestPopup(
+        UIPopupBase prefab,
+        EPopupPriority priority,
+        object payload = null,
+        bool unique = true,
+        EPopupPolicy policy = EPopupPolicy.PreemptIfHigher)
     {
-        if (popupPrefab == null)
+        if (prefab == null)
         {
             return;
         }
 
+        Type t = prefab.GetType();
+
         if (unique == true)
         {
-            if (IsAlreadyQueued(popupPrefab) == true)
+            if (IsAlreadyQueuedType(t) == true)
             {
                 return;
             }
 
-            if (IsAlreadyOpen(popupPrefab) == true)
+            if (IsAlreadyOpenType(t) == true)
             {
                 return;
             }
         }
 
         PopupRequest req = new PopupRequest();
-        req.prefab = popupPrefab;
+        req.prefab = prefab;
+        req.instance = null;
         req.priority = priority;
         req.payload = payload;
         req.unique = unique;
         req.sequence = _sequenceCounter;
         _sequenceCounter++;
+
+        if (_current != null)
+        {
+            if (policy == EPopupPolicy.PreemptIfHigher &&
+                priority > (EPopupPriority)_current.OpenPriority)
+            {
+                SuspendCurrentToPending();
+                OpenRequestNow(req);
+                return;
+            }
+
+            if (policy == EPopupPolicy.ReplaceCurrent)
+            {
+                ClosePopup(_current);
+                _pending.Insert(0, req);
+                return;
+            }
+        }
 
         _pending.Add(req);
         _processScheduled = true;
@@ -65,45 +100,38 @@ public class UIManager : MonoSingleton<UIManager>
 
     public void CloseTopPopup()
     {
-        if (_stack.Count <= 0)
+        if (_current == null)
         {
             return;
         }
 
-        UIPopupBase top = _stack.Pop();
-        if (top == null)
-        {
-            return;
-        }
-
-        top.OnClose();
-        Destroy(top.gameObject);
+        ClosePopup(_current);
     }
 
     public void ClosePopup(UIPopupBase target)
     {
-        if (target == null)
+        if (_current != target)
         {
             return;
         }
 
-        if (_stack.Count <= 0)
-        {
-            Destroy(target.gameObject);
-            return;
-        }
+        _modalBlocker.SetActive(false);
 
-        UIPopupBase top = _stack.Peek();
-        if (top != target)
+        target.RequestClose(() =>
         {
-            return;
-        }
-
-        CloseTopPopup();
+            ReturnToPool(target);
+            _current = null;
+            _processScheduled = true;
+        });
     }
 
     private void ProcessPending()
     {
+        if (_current != null)
+        {
+            return;
+        }
+
         if (_pending.Count <= 0)
         {
             return;
@@ -111,74 +139,132 @@ public class UIManager : MonoSingleton<UIManager>
 
         SortPending();
 
-        for (int i = 0; i < _pending.Count; i++)
-        {
-            PopupRequest req = _pending[i];
-            if (req == null || req.prefab == null)
-            {
-                continue;
-            }
+        PopupRequest req = _pending[0];
+        _pending.RemoveAt(0);
 
-            OpenPopupInternal(req);
-        }
-
-        _pending.Clear();
+        OpenRequestNow(req);
     }
 
-    private void OpenPopupInternal(PopupRequest req)
+    private void SuspendCurrentToPending()
     {
-        if (_popupRoot == null)
+        UIPopupBase cur = _current;
+
+        PopupRequest r = new PopupRequest();
+        r.instance = cur;
+        r.prefab = null;
+        r.priority = (EPopupPriority)cur.OpenPriority;
+        r.payload = cur.CachedPayload;
+        r.unique = true;
+        r.sequence = cur.OpenSequence;
+
+        cur.OnSuspend();
+        _current = null;
+
+        _pending.Add(r);
+        SortPending();
+    }
+
+    private void OpenRequestNow(PopupRequest req)
+    {
+        UIPopupBase instance;
+
+        if (req.instance != null)
         {
-            EnsurePopupRoot();
+            instance = req.instance;
+            AttachToRoot(instance.transform);
+
+            instance.InitializePopupMeta(
+                instance.GetType(),
+                (int)req.priority,
+                req.sequence
+            );
+
+            instance.OnResume(req.payload);
+        }
+        else
+        {
+            instance = GetFromPoolOrCreate(req.prefab);
+            AttachToRoot(instance.transform);
+
+            instance.InitializePopupMeta(
+                req.prefab.GetType(),
+                (int)req.priority,
+                req.sequence
+            );
+
+            instance.OnAfterGetFromPool();
+            instance.OnOpen(req.payload);
         }
 
-        UIPopupBase instance = Instantiate(req.prefab, _popupRoot);
-        if (instance == null)
-        {
-            return;
-        }
-
-        DisableInnerCanvases(instance.transform);
-
-        RectTransform rt = instance.GetComponent<RectTransform>();
-        if (rt != null)
-        {
-            rt.anchoredPosition = Vector2.zero;
-            rt.localScale = Vector3.one;
-            rt.localRotation = Quaternion.identity;
-        }
-
-        instance.SetPopupType(req.prefab.GetType());
-
+        _modalBlocker.SetActive(true);
+        _modalBlocker.transform.SetAsLastSibling();
         instance.transform.SetAsLastSibling();
 
-        _stack.Push(instance);
-        instance.OnOpen(req.payload);
+        _current = instance;
+    }
+
+    private UIPopupBase GetFromPoolOrCreate(UIPopupBase prefab)
+    {
+        Type t = prefab.GetType();
+
+        if (_pool.TryGetValue(t, out var bag) == false)
+        {
+            bag = new Stack<UIPopupBase>();
+            _pool[t] = bag;
+        }
+
+        while (bag.Count > 0)
+        {
+            UIPopupBase p = bag.Pop();
+            if (p != null)
+            {
+                return p;
+            }
+        }
+
+        return Instantiate(prefab, _popupRoot);
+    }
+
+    private void ReturnToPool(UIPopupBase popup)
+    {
+        popup.OnBeforeReturnToPool();
+
+        Type t = popup.PopupType;
+
+        if (_pool.TryGetValue(t, out var bag) == false)
+        {
+            bag = new Stack<UIPopupBase>();
+            _pool[t] = bag;
+        }
+
+        popup.transform.SetParent(_popupRoot, false);
+        bag.Push(popup);
     }
 
     private void EnsureCanvasRoot()
     {
         if (_uiRootCanvas == null)
         {
-            _uiRootCanvas = Object.FindFirstObjectByType<Canvas>();
+            _uiRootCanvas = UnityEngine.Object.FindFirstObjectByType<Canvas>();
         }
 
-        if (_uiRootCanvas == null)
+        if (_uiRootCanvas != null)
         {
-            GameObject go = new GameObject("[CanvasRoot]");
-            go.layer = LayerMask.NameToLayer("UI");
-
-            _uiRootCanvas = go.AddComponent<Canvas>();
-            _uiRootCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-
-            CanvasScaler scaler = go.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
-
-            go.AddComponent<GraphicRaycaster>();
+            return;
         }
+
+        GameObject go = new GameObject("[CanvasRoot]");
+        go.layer = LayerMask.NameToLayer("UI");
+
+        _uiRootCanvas = go.AddComponent<Canvas>();
+        _uiRootCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+        CanvasScaler scaler = go.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        go.AddComponent<GraphicRaycaster>();
     }
 
     private void EnsurePopupRoot()
@@ -188,109 +274,76 @@ public class UIManager : MonoSingleton<UIManager>
             return;
         }
 
-        Transform existing = _uiRootCanvas.transform.Find("[PopupRoot]");
-        if (existing != null)
-        {
-            _popupRoot = existing as RectTransform;
-        }
+        GameObject go = new GameObject("[PopupRoot]");
+        go.layer = LayerMask.NameToLayer("UI");
 
-        if (_popupRoot == null)
-        {
-            GameObject go = new GameObject("[PopupRoot]");
-            go.layer = LayerMask.NameToLayer("UI");
+        _popupRoot = go.AddComponent<RectTransform>();
+        _popupRoot.SetParent(_uiRootCanvas.transform, false);
 
-            RectTransform rt = go.AddComponent<RectTransform>();
-            rt.SetParent(_uiRootCanvas.transform, false);
-
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
-            rt.anchoredPosition = Vector2.zero;
-            rt.localScale = Vector3.one;
-
-            _popupRoot = rt;
-        }
+        _popupRoot.anchorMin = Vector2.zero;
+        _popupRoot.anchorMax = Vector2.one;
+        _popupRoot.offsetMin = Vector2.zero;
+        _popupRoot.offsetMax = Vector2.zero;
     }
 
-    private void DisableInnerCanvases(Transform root)
+    private void EnsureModalBlocker()
     {
-        if (root == null)
+        if (_modalBlocker != null)
         {
             return;
         }
 
-        Canvas[] canvases = root.GetComponentsInChildren<Canvas>(true);
-        for (int i = 0; i < canvases.Length; i++)
-        {
-            Canvas c = canvases[i];
-            if (c == null)
-            {
-                continue;
-            }
+        GameObject go = new GameObject("[ModalBlocker]");
+        go.transform.SetParent(_popupRoot, false);
 
-            c.enabled = false;
+        RectTransform rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+
+        Image img = go.AddComponent<Image>();
+        img.color = new Color(0, 0, 0, 0.5f);
+        img.raycastTarget = true;
+
+        _modalBlocker = go;
+        _modalBlocker.SetActive(false);
+    }
+
+    private void AttachToRoot(Transform t)
+    {
+        RectTransform rt = t as RectTransform;
+        if (rt != null)
+        {
+            rt.SetParent(_popupRoot, false);
+            rt.anchoredPosition = Vector2.zero;
+            rt.localScale = Vector3.one;
+            return;
         }
 
-        CanvasScaler[] scalers = root.GetComponentsInChildren<CanvasScaler>(true);
-        for (int i = 0; i < scalers.Length; i++)
-        {
-            CanvasScaler s = scalers[i];
-            if (s == null)
-            {
-                continue;
-            }
-
-            s.enabled = false;
-        }
-
-        GraphicRaycaster[] raycasters = root.GetComponentsInChildren<GraphicRaycaster>(true);
-        for (int i = 0; i < raycasters.Length; i++)
-        {
-            GraphicRaycaster r = raycasters[i];
-            if (r == null)
-            {
-                continue;
-            }
-
-            r.enabled = false;
-        }
+        t.SetParent(_popupRoot, false);
+        t.localPosition = Vector3.zero;
+        t.localScale = Vector3.one;
     }
 
     private void SortPending()
     {
-        _pending.Sort(CompareRequest);
-    }
-
-    private int CompareRequest(PopupRequest a, PopupRequest b)
-    {
-        if (a == null && b == null) return 0;
-        if (a == null) return 1;
-        if (b == null) return -1;
-
-        int pa = (int)a.priority;
-        int pb = (int)b.priority;
-
-        if (pa > pb) return -1;
-        if (pa < pb) return 1;
-
-        if (a.sequence < b.sequence) return -1;
-        if (a.sequence > b.sequence) return 1;
-
-        return 0;
-    }
-
-    private bool IsAlreadyQueued(UIPopupBase prefab)
-    {
-        for (int i = 0; i < _pending.Count; i++)
+        _pending.Sort((a, b) =>
         {
-            PopupRequest r = _pending[i];
-            if (r == null)
+            if (a.priority != b.priority)
             {
-                continue;
+                return b.priority.CompareTo(a.priority);
             }
 
-            if (r.prefab == prefab)
+            return a.sequence.CompareTo(b.sequence);
+        });
+    }
+
+    private bool IsAlreadyQueuedType(Type t)
+    {
+        foreach (PopupRequest r in _pending)
+        {
+            if (r.PopupType == t)
             {
                 return true;
             }
@@ -299,28 +352,13 @@ public class UIManager : MonoSingleton<UIManager>
         return false;
     }
 
-    private bool IsAlreadyOpen(UIPopupBase prefab)
+    private bool IsAlreadyOpenType(Type t)
     {
-        if (prefab == null)
+        if (_current == null)
         {
             return false;
         }
 
-        System.Type t = prefab.GetType();
-
-        foreach (UIPopupBase p in _stack)
-        {
-            if (p == null)
-            {
-                continue;
-            }
-
-            if (p.PopupType == t)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return _current.PopupType == t;
     }
 }
