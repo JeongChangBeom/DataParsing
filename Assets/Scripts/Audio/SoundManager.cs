@@ -10,6 +10,10 @@ public class SoundManager : MonoSingleton<SoundManager>
     [Header("Database")]
     [SerializeField] private SoundDatabaseSO database;
 
+    [Header("Auto Assign (Resources)")]
+    [SerializeField] private string resourcesDatabasePath = "SoundDatabaseSO";
+    [SerializeField] private string resourcesDatabasePathFallback = "Audio/SoundDatabaseSO";
+
     [Header("Mixer (Optional)")]
     [SerializeField] private AudioMixer audioMixer;
     [SerializeField] private string masterParam = "Master";
@@ -40,8 +44,12 @@ public class SoundManager : MonoSingleton<SoundManager>
 
     private SoundPlayerPool _playerPool;
 
+    private bool _databaseResolved;
+    private bool _databaseMissingLogged;
+
     protected override void OnInitialize()
     {
+        ResolveDatabaseOrError();
         SetupBgmSources();
         _playerPool = new SoundPlayerPool(transform, initialPoolCount, maxPoolCount);
         LoadSettings();
@@ -61,6 +69,11 @@ public class SoundManager : MonoSingleton<SoundManager>
         if (sound == ESound.None)
         {
             return;
+        }
+
+        if (database == null)
+        {
+            ResolveDatabaseOrError();
         }
 
         if (database == null)
@@ -178,6 +191,66 @@ public class SoundManager : MonoSingleton<SoundManager>
 
         _clipHandles.Clear();
         _clipCache.Clear();
+    }
+
+    private void ResolveDatabaseOrError()
+    {
+        if (_databaseResolved)
+        {
+            return;
+        }
+
+        _databaseResolved = true;
+
+        if (database != null)
+        {
+            return;
+        }
+
+        string p0 = resourcesDatabasePath;
+        if (string.IsNullOrEmpty(p0))
+        {
+            p0 = "SoundDatabase";
+        }
+
+        SoundDatabaseSO a = Resources.Load<SoundDatabaseSO>(p0);
+        if (a != null)
+        {
+            database = a;
+            return;
+        }
+
+        string p1 = resourcesDatabasePathFallback;
+        if (string.IsNullOrEmpty(p1))
+        {
+            p1 = "Audio/SoundDatabase";
+        }
+
+        SoundDatabaseSO b = Resources.Load<SoundDatabaseSO>(p1);
+        if (b != null)
+        {
+            database = b;
+            return;
+        }
+
+        LogDatabaseMissingOnce(p0, p1);
+    }
+
+    private void LogDatabaseMissingOnce(string p0, string p1)
+    {
+        if (_databaseMissingLogged)
+        {
+            return;
+        }
+
+        _databaseMissingLogged = true;
+
+        Debug.LogError(
+            "[SoundManager] SoundDatabaseSO not found.\n" +
+            "Required: put a SoundDatabaseSO asset at one of the following paths:\n" +
+            "1) Assets/Resources/" + p0 + ".asset\n" +
+            "2) Assets/Resources/" + p1 + ".asset\n" +
+            "Then run: Framework/Audio/Build Sound Database From Sheet + Folder");
     }
 
     private void PlayBgm(SoundDatabaseSO.Entry entry)

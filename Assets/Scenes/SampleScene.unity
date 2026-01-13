@@ -315,6 +315,7 @@ MonoBehaviour:
   _dontDestroyOnLoad: 1
   _uiRootCanvas: {fileID: 0}
   _popupRoot: {fileID: 0}
+  _modalBlocker: {fileID: 0}
 --- !u!4 &799796453
 Transform:
   m_ObjectHideFlags: 0
@@ -436,8 +437,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2dd912e8794496046980239c0f0aba17, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  popupA: {fileID: 149348673106862135, guid: 05074e17927fc0a438e093d0ca631426, type: 3}
-  popupB: {fileID: -5566909415783365605, guid: ff5bcfa1613bec145bb68804cea4d2e1, type: 3}
+  database: {fileID: 11400000, guid: 820014ff2f177c24eac6c6b890fa34e3, type: 2}
+  playOnStart: 0
+  startIndex: 0
+  sfxVolumeMul: 1
+  sfxPitch: 1
 --- !u!4 &1711629461
 Transform:
   m_ObjectHideFlags: 0
